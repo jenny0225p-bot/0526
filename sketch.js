@@ -4,8 +4,8 @@ let isLoading = true;
 
 // 原始 API 網址
 const targetUrl = "https://wic.gov.taipei/OpenData/API/Rain/Get?stationNo=&loginId=open_rain&dataKey=85452C1D";
-// 使用 allorigins 代理伺服器來解決 CORS 問題
-const proxyUrl = "https://api.allorigins.win/raw?url=";
+// 使用 corsproxy.io 公共代理伺服器來解決 CORS 問題
+const proxyUrl = "https://corsproxy.io/?";
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
