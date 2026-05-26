@@ -35,8 +35,8 @@ function setup() {
 
 function fetchRainData() {
   isLoading = true;
-  // 組合代理伺服器與目標網址
-  let finalUrl = proxyUrl + targetUrl;
+  // 必須對 targetUrl 進行編碼，否則多個問號會導致代理伺服器解析錯誤 (400 錯誤)
+  let finalUrl = proxyUrl + encodeURIComponent(targetUrl);
   
   // 使用 p5.js 的 loadJSON 取得資料
   loadJSON(finalUrl, gotData, handleError);
@@ -109,10 +109,12 @@ function draw() {
     let station = rainData[i];
     
     // 1. 在列表顯示資料 (僅顯示前 N 筆以免超出螢幕)
-    let sName = station.StationName || "未知";
-    let aName = (station.GeoInfo && station.GeoInfo.TownName) || "-";
-    let rainNow = float(station.RainfallElement.Past1hr.Precipitation);
-    let rainDay = float(station.RainfallElement.Now.Precipitation);
+    let sName = station.StationName || "未知測站";
+    let aName = (station.GeoInfo && station.GeoInfo.TownName) ? station.GeoInfo.TownName : "-";
+    
+    // 安全取得雨量資料，避免因欄位缺失導致程式崩潰
+    let rainNow = (station.RainfallElement && station.RainfallElement.Past1hr) ? float(station.RainfallElement.Past1hr.Precipitation) : 0;
+    let rainDay = (station.RainfallElement && station.RainfallElement.Now) ? float(station.RainfallElement.Now.Precipitation) : 0;
     
     // CWA 的 -99 或 -999 代表無資料，轉為 0 方便顯示
     if (rainNow < 0) rainNow = 0;
@@ -131,20 +133,16 @@ function draw() {
 
     // 2. 在地圖上繪製雨量點 (需尋找 WGS84 座標)
     let coords = null;
-    if (station.GeoInfo && station.GeoInfo.Coordinates) {
-      coords = station.GeoInfo.Coordinates.find(c => c.CoordinateName === "WGS84");
+    if (station.GeoInfo && Array.isArray(station.GeoInfo.Coordinates)) {
+      coords = station.GeoInfo.Coordinates.find(c => c.CoordinateScale === "WGS84" || c.CoordinateName === "WGS84");
     }
-    let lat = coords ? float(coords.StationLatitude) : null;
-    let lon = coords ? float(coords.StationLongitude) : null;
+    let lat = (coords && coords.StationLatitude) ? float(coords.StationLatitude) : null;
+    let lon = (coords && coords.StationLongitude) ? float(coords.StationLongitude) : null;
     
     if (lat && lon) {
       let pos = myMap.latLngToPixel(lat, lon);
       
-      // 修正：從正確的 CWA JSON 路徑取得 1 小時雨量
-      let rNow = float(station.RainfallElement.Past1hr.Precipitation);
-      if (rNow < 0) rNow = 0; // 處理 -99 等異常值
-      
-      let radius = 10 + rNow * 2;
+      let radius = 12 + rainNow * 3;
       
       // 偵測滑鼠是否在圓點上
       let d = dist(mouseX, mouseY, pos.x, pos.y);
@@ -163,7 +161,7 @@ function draw() {
   // 3. 顯示懸停資訊視窗 (Tooltips)
   if (hoveredStation) {
     let sName = hoveredStation.StationName;
-    let rNow = hoveredStation.RainfallElement.Past1hr.Precipitation;
+    let rNow = (hoveredStation.RainfallElement && hoveredStation.RainfallElement.Past1hr) ? hoveredStation.RainfallElement.Past1hr.Precipitation : 0;
     if (rNow < 0) rNow = 0;
     fill(0, 0, 0, 200);
     rect(mouseX + 15, mouseY - 40, 140, 50, 5);
