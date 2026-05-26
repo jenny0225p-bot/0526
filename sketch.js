@@ -2,6 +2,33 @@ let rainData = [];
 let lastUpdate = "";
 let isLoading = true;
 
+// 台北市主要測站經緯度座標對照表 (用於地圖定位)
+const stationCoords = {
+  "湖田國小": { lat: 25.1528, lon: 121.5323 },
+  "大屯國小": { lat: 25.1741, lon: 121.4925 },
+  "桃源國中": { lat: 25.1397, lon: 121.4914 },
+  "北投國小": { lat: 25.1321, lon: 121.5005 },
+  "陽明高中": { lat: 25.0945, lon: 121.5148 },
+  "太平國小": { lat: 25.0610, lon: 121.5111 },
+  "民生國中": { lat: 25.0602, lon: 121.5606 },
+  "中正國中": { lat: 25.0336, lon: 121.5201 },
+  "三興國小": { lat: 25.0303, lon: 121.5583 },
+  "格致國中": { lat: 25.1362, lon: 121.5387 },
+  "平等國小": { lat: 25.1278, lon: 121.5714 },
+  "至善國中": { lat: 25.1014, lon: 121.5489 },
+  "碧湖國小": { lat: 25.0811, lon: 121.5878 },
+  "東湖國小": { lat: 25.0689, lon: 121.6169 },
+  "瑠公國中": { lat: 25.0372, lon: 121.5847 },
+  "舊莊國小": { lat: 25.0402, lon: 121.6186 },
+  "博嘉國小": { lat: 25.0000, lon: 121.5886 },
+  "北政國中": { lat: 24.9861, lon: 121.5786 },
+  "長安國小": { lat: 25.0489, lon: 121.5283 },
+  "萬華國中": { lat: 25.0278, lon: 121.4986 },
+  "台灣大學(新)": { lat: 25.0175, lon: 121.5397 },
+  "雙園": { lat: 25.0232, lon: 121.4925 },
+  "中洲": { lat: 25.1235, lon: 121.4608 }
+};
+
 // Mappa 地圖變數
 let myMap;
 let canvas;
@@ -16,11 +43,11 @@ const options = {
 };
 
 // 氣象署 CWA API 網址 (修正網域為 .gov.tw)
-// 注意：rdec-key... 可能是失效金鑰，建議至氣象署官網申請自己的授權碼替換
-const targetUrl = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001?Authorization=rdec-key-123-45678-011121314";
+// 加上 &CountyName=%E8%87%BA%E5%8C%97%E5%B8%82 (臺北市) 來大幅縮小資料量，避免代理伺服器報錯
+const targetUrl = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001?Authorization=rdec-key-123-45678-011121314&CountyName=%E8%87%BA%E5%8C%97%E5%B8%82";
 
-// 使用 AllOrigins 代理（不使用 /raw 模式以增加穩定性，需解析 .contents）
-const proxyUrl = "https://api.allorigins.win/get?url=";
+// 更換為 corsproxy.io，因為資料量縮小後，這個代理伺服器更直接、穩定
+const proxyUrl = "https://corsproxy.io/?";
 
 function setup() {
   canvas = createCanvas(windowWidth, windowHeight);
@@ -36,37 +63,25 @@ function setup() {
 
 function fetchRainData() {
   isLoading = true;
-  // 使用 api.allorigins.win 時，將編碼後的網址接在後方
-  let finalUrl = proxyUrl + encodeURIComponent(targetUrl);
+  // 使用 corsproxy.io 搭配過濾後的網址
+  let finalUrl = proxyUrl + targetUrl;
   
   // 使用 p5.js 的 loadJSON 取得資料
   loadJSON(finalUrl, gotData, handleError);
 }
 
 function gotData(data) {
-  // 1. 處理 Proxy 回傳的包裝格式
-  let actualData = data;
-  if (data && data.contents) {
-    try {
-      actualData = (typeof data.contents === 'string') ? JSON.parse(data.contents) : data.contents;
-    } catch (e) {
-      console.error("JSON 解析錯誤:", e);
-      isLoading = false;
-      return;
-    }
-  }
+  console.log("收到氣象資料:", data);
 
-  console.log("解析後的資料結構:", actualData);
-
-  // 2. 解析氣象署 JSON 結構並過濾臺北市資料
-  if (actualData && actualData.records && actualData.records.Station) {
-    let allStations = actualData.records.Station;
+  // 2. 解析氣象署 JSON 結構
+  if (data && data.records && data.records.Station) {
+    let allStations = data.records.Station;
     // 精準過濾 CountyName 為 臺北市 的測站，同時確保有座標資料
     // 2. 排除沒有座標資料的站點
     rainData = allStations.filter(s => 
       s.GeoInfo && 
-      (s.GeoInfo.CountyName === "臺北市" || s.GeoInfo.CountyName === "台北市") && 
-      s.GeoInfo.Coordinates
+      (s.GeoInfo.CountyName === "臺北市" || s.GeoInfo.CountyName === "台北市")
+      // 不再強制檢查 Coordinates，因為我們有 stationCoords 對照表
     );
     lastUpdate = new Date().toLocaleTimeString();
   }
