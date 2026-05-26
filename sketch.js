@@ -18,8 +18,8 @@ const options = {
 // 氣象署 CWA API 網址 (修正網域為 .gov.tw)
 // 注意：rdec-key... 可能是失效金鑰，建議至氣象署官網申請自己的授權碼替換
 const targetUrl = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001?Authorization=rdec-key-123-45678-011121314";
-// 使用 corsproxy.io 代理伺服器
-const proxyUrl = "https://corsproxy.io/?";
+// 更換為支援較大檔案的代理伺服器 (解決 413 Content Too Large 錯誤)
+const proxyUrl = "https://api.allorigins.win/raw?url=";
 
 function setup() {
   canvas = createCanvas(windowWidth, windowHeight);
@@ -35,7 +35,7 @@ function setup() {
 
 function fetchRainData() {
   isLoading = true;
-  // 必須對 targetUrl 進行編碼，否則多個問號會導致代理伺服器解析錯誤 (400 錯誤)
+  // 使用 api.allorigins.win 時，將編碼後的網址接在後方
   let finalUrl = proxyUrl + encodeURIComponent(targetUrl);
   
   // 使用 p5.js 的 loadJSON 取得資料
@@ -47,8 +47,13 @@ function gotData(data) {
   // 解析氣象署 JSON 結構並過濾臺北市資料
   if (data && data.records && data.records.Station) {
     let allStations = data.records.Station;
-    // 過濾 CountyName 為 臺北市 的測站
-    rainData = allStations.filter(s => s.GeoInfo && s.GeoInfo.CountyName === "臺北市");
+    // 1. 精準過濾 CountyName 為 臺北市 的測站
+    // 2. 排除沒有座標資料的站點
+    rainData = allStations.filter(s => 
+      s.GeoInfo && 
+      s.GeoInfo.CountyName === "臺北市" && 
+      s.GeoInfo.Coordinates
+    );
     lastUpdate = new Date().toLocaleTimeString();
   }
   isLoading = false;
@@ -109,12 +114,12 @@ function draw() {
     let station = rainData[i];
     
     // 1. 在列表顯示資料 (僅顯示前 N 筆以免超出螢幕)
-    let sName = station.StationName || "未知測站";
-    let aName = (station.GeoInfo && station.GeoInfo.TownName) ? station.GeoInfo.TownName : "-";
+    let sName = station.StationName || "未知";
+    let aName = (station.GeoInfo && (station.GeoInfo.TownName || station.GeoInfo.CountyName)) || "-";
     
     // 安全取得雨量資料，避免因欄位缺失導致程式崩潰
-    let rainNow = (station.RainfallElement && station.RainfallElement.Past1hr) ? float(station.RainfallElement.Past1hr.Precipitation) : 0;
-    let rainDay = (station.RainfallElement && station.RainfallElement.Now) ? float(station.RainfallElement.Now.Precipitation) : 0;
+    let rainNow = (station.RainfallElement && station.RainfallElement.Past1hr) ? float(station.RainfallElement.Past1hr.Precipitation) : -99;
+    let rainDay = (station.RainfallElement && station.RainfallElement.Now) ? float(station.RainfallElement.Now.Precipitation) : -99;
     
     // CWA 的 -99 或 -999 代表無資料，轉為 0 方便顯示
     if (rainNow < 0) rainNow = 0;
@@ -133,11 +138,14 @@ function draw() {
 
     // 2. 在地圖上繪製雨量點 (需尋找 WGS84 座標)
     let coords = null;
-    if (station.GeoInfo && Array.isArray(station.GeoInfo.Coordinates)) {
-      coords = station.GeoInfo.Coordinates.find(c => c.CoordinateScale === "WGS84" || c.CoordinateName === "WGS84");
+    if (station.GeoInfo && station.GeoInfo.Coordinates) {
+      // CWA API 的座標可能存放在 CoordinateName 或 CoordinateScale 中
+      coords = station.GeoInfo.Coordinates.find(c => 
+        c.CoordinateName === "WGS84" || c.CoordinateScale === "WGS84"
+      );
     }
-    let lat = (coords && coords.StationLatitude) ? float(coords.StationLatitude) : null;
-    let lon = (coords && coords.StationLongitude) ? float(coords.StationLongitude) : null;
+    let lat = coords ? float(coords.StationLatitude) : null;
+    let lon = coords ? float(coords.StationLongitude) : null;
     
     if (lat && lon) {
       let pos = myMap.latLngToPixel(lat, lon);
