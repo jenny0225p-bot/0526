@@ -43,8 +43,8 @@ const options = {
 };
 
 // 氣象署 CWA API 網址 (修正網域為 .gov.tw)
-// 加上 &CountyName=%E8%87%BA%E5%8C%97%E5%B8%82 (臺北市) 來大幅縮小資料量，避免代理伺服器報錯
-const targetUrl = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001?Authorization=rdec-key-123-45678-011121314&CountyName=%E8%87%BA%E5%8C%97%E5%B8%82";
+// 加上 &CountyName=%E8%87%BA%E5%8C%97%E5%B8%82 (臺北市) 並使用新的授權碼，確保讀取穩定
+const targetUrl = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001?Authorization=CWA-F69579F0-802B-4B48-A431-FE9990299637&CountyName=%E8%87%BA%E5%8C%97%E5%B8%82";
 
 // 更換為 corsproxy.io，因為資料量縮小後，這個代理伺服器更直接、穩定
 const proxyUrl = "https://corsproxy.io/?";
@@ -165,19 +165,20 @@ function draw() {
       text(rainDay.toFixed(1), xPos + 280, currentY);
     }
 
-    // 2. 在地圖上繪製雨量點 (需尋找 WGS84 座標)
-    let coords = null;
-    if (station.GeoInfo && Array.isArray(station.GeoInfo.Coordinates)) {
-      // 從 Coordinates 陣列中找出 WGS84 座標點
-      for (let c of station.GeoInfo.Coordinates) {
-        if (c.CoordinateName === "WGS84" || c.CoordinateScale === "WGS84") {
-          coords = c;
-          break;
-        }
-      }
+    // 2. 在地圖上繪製雨量點
+    let lat = 0;
+    let lon = 0;
+
+    // 優先從對照表抓取座標，確保顯示在台北市範圍內
+    if (stationCoords[sName]) {
+      lat = stationCoords[sName].lat;
+      lon = stationCoords[sName].lon;
+    } else if (station.GeoInfo && Array.isArray(station.GeoInfo.Coordinates)) {
+      // 如果對照表沒有，才從 API 資料尋找 WGS84 座標
+      let c = station.GeoInfo.Coordinates.find(coord => coord.CoordinateName === "WGS84" || coord.CoordinateScale === "WGS84");
+      lat = c ? float(c.StationLatitude) : 0;
+      lon = c ? float(c.StationLongitude) : 0;
     }
-    let lat = coords ? float(coords.StationLatitude) : 0;
-    let lon = coords ? float(coords.StationLongitude) : 0;
     
     if (lat !== 0 && lon !== 0) {
       let pos = myMap.latLngToPixel(lat, lon);
