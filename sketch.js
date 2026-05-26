@@ -15,10 +15,11 @@ const options = {
   style: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 };
 
-// 氣象署 CWA API 網址 (包含全台灣觀測站)
-const targetUrl = "https://opendata.cwa.gov.taipei/api/v1/rest/datastore/O-A0002-001?Authorization=rdec-key-123-45678-011121314";
-// 使用 corsproxy.io 公共代理伺服器來解決 CORS 問題
-const proxyUrl = "https://api.allorigins.win/raw?url=";
+// 氣象署 CWA API 網址 (修正網域為 .gov.tw)
+// 注意：rdec-key... 可能是失效金鑰，建議至氣象署官網申請自己的授權碼替換
+const targetUrl = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001?Authorization=rdec-key-123-45678-011121314";
+// 使用 corsproxy.io 代理伺服器
+const proxyUrl = "https://corsproxy.io/?";
 
 function setup() {
   canvas = createCanvas(windowWidth, windowHeight);
@@ -35,7 +36,7 @@ function setup() {
 function fetchRainData() {
   isLoading = true;
   // 組合代理伺服器與目標網址
-  let finalUrl = proxyUrl + encodeURIComponent(targetUrl);
+  let finalUrl = proxyUrl + targetUrl;
   
   // 使用 p5.js 的 loadJSON 取得資料
   loadJSON(finalUrl, gotData, handleError);
@@ -129,7 +130,10 @@ function draw() {
     }
 
     // 2. 在地圖上繪製雨量點 (需尋找 WGS84 座標)
-    let coords = station.GeoInfo.Coordinates.find(c => c.CoordinateName === "WGS84");
+    let coords = null;
+    if (station.GeoInfo && station.GeoInfo.Coordinates) {
+      coords = station.GeoInfo.Coordinates.find(c => c.CoordinateName === "WGS84");
+    }
     let lat = coords ? float(coords.StationLatitude) : null;
     let lon = coords ? float(coords.StationLongitude) : null;
     
