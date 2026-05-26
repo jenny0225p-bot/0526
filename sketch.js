@@ -2,13 +2,30 @@ let rainData = [];
 let lastUpdate = "";
 let isLoading = true;
 
+// Mappa 地圖變數
+let myMap;
+let canvas;
+const mappa = new Mappa('Leaflet');
+
+// 地圖初始設定（以台北車站為中心）
+const options = {
+  lat: 25.0478,
+  lng: 121.5170,
+  zoom: 12,
+  style: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+};
+
 // 原始 API 網址
 const targetUrl = "https://wic.gov.taipei/OpenData/API/Rain/Get?stationNo=&loginId=open_rain&dataKey=85452C1D";
 // 使用 corsproxy.io 公共代理伺服器來解決 CORS 問題
 const proxyUrl = "https://api.allorigins.win/raw?url=";
 
 function setup() {
-  createCanvas(windowWidth, windowHeight);
+  canvas = createCanvas(windowWidth, windowHeight);
+  // 初始化地圖並將其疊加在畫布上
+  myMap = mappa.tileMap(options);
+  myMap.overlay(canvas);
+
   fetchRainData();
   
   // 每 10 分鐘自動更新一次資料
@@ -42,8 +59,14 @@ function handleError(err) {
 }
 
 function draw() {
-  background(30, 40, 60); // 深藍色背景
+  // 必須使用 clear() 才能看到地圖層
+  clear();
   
+  // 繪製半透明半遮罩背景，讓文字更易讀
+  fill(30, 40, 60, 180);
+  noStroke();
+  rect(10, 10, 520, height - 20, 10);
+
   fill(255);
   textSize(24);
   textAlign(LEFT, TOP);
@@ -55,49 +78,70 @@ function draw() {
 
   if (isLoading) {
     fill(255, 204, 0);
-    text("資料讀取中...", 20, 90);
+    text("API 資料讀取中...", 20, 90);
     return;
   }
 
   // 設定顯示區域
-  let yPos = 100;
+  let yPos = 90;
   let margin = 25;
   let xPos = 20;
 
   // 繪製表頭
   fill(100, 200, 255);
+  textSize(14);
   text("測站名稱", xPos, yPos);
   text("行政區", xPos + 150, yPos);
   text("現在雨量 (mm)", xPos + 250, yPos);
   text("今日累積 (mm)", xPos + 380, yPos);
   
   stroke(100);
-  line(20, yPos + 20, width - 20, yPos + 20);
+  line(20, yPos + 20, 510, yPos + 20);
   noStroke();
 
-  // 顯示前 20 筆資料 (避免超出螢幕)
+  // 顯示資料列表與在地圖上繪製點
   fill(255);
-  let displayCount = Math.min(rainData.length, floor((height - 150) / margin));
+  let displayLimit = floor((height - 150) / margin);
   
-  for (let i = 0; i < displayCount; i++) {
+  for (let i = 0; i < rainData.length; i++) {
     let station = rainData[i];
-    let currentY = yPos + 35 + (i * margin);
     
-    // 測站名稱與區域
-    // 相容 WIC API 可能使用的大寫開頭欄位
-    let sName = station.StationName || station.stationName || "未知";
-    let aName = station.AreaName || station.areaName || "-";
-    text(sName, xPos, currentY);
-    text(aName, xPos + 150, currentY);
+    // 1. 在列表顯示資料 (僅顯示前 N 筆以免超出螢幕)
+    if (i < displayLimit) {
+      let currentY = yPos + 35 + (i * margin);
+      let sName = station.StationName || station.stationName || "未知";
+      let aName = station.AreaName || station.areaName || "-";
+      fill(255);
+      text(sName, xPos, currentY);
+      text(aName, xPos + 150, currentY);
+      
+      let rainNow = float(station.Rain1hr || station.rain1hr || 0);
+      if (rainNow > 0) fill(100, 255, 100); 
+      text(rainNow.toFixed(1), xPos + 250, currentY);
+      
+      fill(255);
+      let rainDay = float(station.Rain24hr || station.rain24hr || 0);
+      text(rainDay.toFixed(1), xPos + 380, currentY);
+    }
+
+    // 2. 在地圖上繪製雨量點
+    let lat = float(station.Lat || station.lat);
+    let lon = float(station.Lon || station.lon || station.Lng || station.lng);
     
-    // 雨量數據 (根據數值改變顏色，提醒注意)
-    let rainNow = float(station.Rain1hr || station.rain1hr || 0);
-    if (rainNow > 0) fill(100, 255, 100); 
-    text(rainNow.toFixed(1), xPos + 250, currentY);
+    if (lat && lon) {
+      let pos = myMap.latLngToPixel(lat, lon);
+      let rNow = float(station.Rain1hr || station.rain1hr || 0);
+      
+      // 如果有雨量，點變大變綠，否則只是小藍點
+      if (rNow > 0) {
+        fill(0, 255, 0, 200);
+        ellipse(pos.x, pos.y, 10 + rNow * 2, 10 + rNow * 2);
+      } else {
+        fill(0, 150, 255, 150);
+        ellipse(pos.x, pos.y, 8, 8);
+      }
+    }
     
-    fill(255);
-    let rainDay = float(station.Rain24hr || station.rain24hr || 0);
-    text(rainDay.toFixed(1), xPos + 380, currentY);
   }
   
   if (rainData.length === 0) {
