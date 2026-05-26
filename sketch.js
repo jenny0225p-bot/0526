@@ -83,20 +83,21 @@ function draw() {
   }
 
   // 設定顯示區域
-  let yPos = 90;
+  let yPos = 100;
   let margin = 25;
   let xPos = 20;
+  let hoveredStation = null;
 
   // 繪製表頭
   fill(100, 200, 255);
   textSize(14);
   text("測站名稱", xPos, yPos);
-  text("行政區", xPos + 150, yPos);
-  text("現在雨量 (mm)", xPos + 250, yPos);
-  text("今日累積 (mm)", xPos + 380, yPos);
+  text("行政區", xPos + 110, yPos);
+  text("現在 (mm)", xPos + 200, yPos);
+  text("累積 (mm)", xPos + 280, yPos);
   
   stroke(100);
-  line(20, yPos + 20, 510, yPos + 20);
+  line(20, yPos + 20, 350, yPos + 20);
   noStroke();
 
   // 顯示資料列表與在地圖上繪製點
@@ -113,15 +114,15 @@ function draw() {
       let aName = station.AreaName || station.areaName || "-";
       fill(255);
       text(sName, xPos, currentY);
-      text(aName, xPos + 150, currentY);
+      text(aName, xPos + 110, currentY);
       
       let rainNow = float(station.Rain1hr || station.rain1hr || 0);
       if (rainNow > 0) fill(100, 255, 100); 
-      text(rainNow.toFixed(1), xPos + 250, currentY);
+      text(rainNow.toFixed(1), xPos + 200, currentY);
       
       fill(255);
       let rainDay = float(station.Rain24hr || station.rain24hr || 0);
-      text(rainDay.toFixed(1), xPos + 380, currentY);
+      text(rainDay.toFixed(1), xPos + 280, currentY);
     }
 
     // 2. 在地圖上繪製雨量點
@@ -131,17 +132,31 @@ function draw() {
     if (lat && lon) {
       let pos = myMap.latLngToPixel(lat, lon);
       let rNow = float(station.Rain1hr || station.rain1hr || 0);
+      let radius = 10 + rNow * 2;
       
-      // 如果有雨量，點變大變綠，否則只是小藍點
-      if (rNow > 0) {
-        fill(0, 255, 0, 200);
-        ellipse(pos.x, pos.y, 10 + rNow * 2, 10 + rNow * 2);
+      // 偵測滑鼠是否在圓點上
+      let d = dist(mouseX, mouseY, pos.x, pos.y);
+      if (d < radius / 2 + 5) {
+        hoveredStation = station;
+        fill(255, 255, 0); // 懸停時變黃色
       } else {
-        fill(0, 150, 255, 150);
-        ellipse(pos.x, pos.y, 8, 8);
+        fill(255, 50, 50, 180); // 平時為紅色半透明
       }
+      
+      noStroke();
+      ellipse(pos.x, pos.y, radius, radius);
     }
-    
+  }
+
+  // 3. 顯示懸停資訊視窗 (Tooltips)
+  if (hoveredStation) {
+    let sName = hoveredStation.StationName || hoveredStation.stationName;
+    let rNow = hoveredStation.Rain1hr || hoveredStation.rain1hr;
+    fill(0, 0, 0, 200);
+    rect(mouseX + 15, mouseY - 40, 140, 50, 5);
+    fill(255);
+    textSize(14);
+    text(`${sName}\n雨量: ${rNow} mm`, mouseX + 25, mouseY - 30);
   }
   
   if (rainData.length === 0) {
