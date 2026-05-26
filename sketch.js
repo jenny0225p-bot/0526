@@ -46,8 +46,8 @@ const options = {
 // 加上 &CountyName=%E8%87%BA%E5%8C%97%E5%B8%82 (臺北市) 並使用新的授權碼，確保讀取穩定
 const targetUrl = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001?Authorization=CWA-F69579F0-802B-4B48-A431-FE9990299637&CountyName=%E8%87%BA%E5%8C%97%E5%B8%82";
 
-// 更換為 corsproxy.io，因為資料量縮小後，這個代理伺服器更直接、穩定
-const proxyUrl = "https://corsproxy.io/?";
+// 更換為 AllOrigins 的 raw 模式，這在處理較大的氣象 JSON 資料時寬容度較高
+const proxyUrl = "https://api.allorigins.win/raw?url=";
 
 function setup() {
   canvas = createCanvas(windowWidth, windowHeight);
@@ -63,8 +63,8 @@ function setup() {
 
 function fetchRainData() {
   isLoading = true;
-  // 使用 corsproxy.io 搭配過濾後的網址
-  let finalUrl = proxyUrl + targetUrl;
+  // 必須使用 encodeURIComponent，否則 targetUrl 中的 &CountyName 會被代理伺服器誤以為是它自己的參數
+  let finalUrl = proxyUrl + encodeURIComponent(targetUrl);
   
   // 使用 p5.js 的 loadJSON 取得資料
   loadJSON(finalUrl, gotData, handleError);
