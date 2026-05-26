@@ -46,8 +46,8 @@ const options = {
 // 加上 &CountyName=%E8%87%BA%E5%8C%97%E5%B8%82 (臺北市) 並使用新的授權碼，確保讀取穩定
 const targetUrl = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001?Authorization=CWA-F69579F0-802B-4B48-A431-FE9990299637&CountyName=%E8%87%BA%E5%8C%97%E5%B8%82";
 
-// 更換為 AllOrigins 的 raw 模式，這在處理較大的氣象 JSON 資料時寬容度較高
-const proxyUrl = "https://api.allorigins.win/raw?url=";
+// 改用 AllOrigins 的 get 模式（包裝模式），這對於解決 413 Payload Too Large 錯誤最有效
+const proxyUrl = "https://api.allorigins.win/get?url=";
 
 function setup() {
   canvas = createCanvas(windowWidth, windowHeight);
@@ -71,11 +71,20 @@ function fetchRainData() {
 }
 
 function gotData(data) {
-  console.log("收到氣象資料:", data);
+  // 1. 處理 AllOrigins 的包裝結構
+  let actualData;
+  try {
+    // AllOrigins 會把原始資料放在 contents 欄位（字串格式）
+    actualData = JSON.parse(data.contents);
+  } catch (e) {
+    console.error("JSON 解析失敗，原始內容為:", data.contents);
+    isLoading = false;
+    return;
+  }
 
-  // 2. 解析氣象署 JSON 結構
-  if (data && data.records && data.records.Station) {
-    let allStations = data.records.Station;
+  // 2. 解析氣象署資料結構
+  if (actualData && actualData.records && actualData.records.Station) {
+    let allStations = actualData.records.Station;
     // 精準過濾 CountyName 為 臺北市 的測站，同時確保有座標資料
     // 2. 排除沒有座標資料的站點
     rainData = allStations.filter(s => 
