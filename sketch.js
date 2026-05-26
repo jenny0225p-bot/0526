@@ -42,11 +42,10 @@ const options = {
   style: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 };
 
-// 氣象署 CWA API 網址 (修正網域為 .gov.tw)
-// 加上 &CountyName=%E8%87%BA%E5%8C%97%E5%B8%82 (臺北市) 並使用新的授權碼，確保讀取穩定
+// 氣象署 CWA API 網址 (自動雨量站 - O-A0002-001)，加上 CountyName 過濾台北市以確保讀取效率
 const targetUrl = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001?Authorization=CWA-F69579F0-802B-4B48-A431-FE9990299637&CountyName=%E8%87%BA%E5%8C%97%E5%B8%82";
 
-// 改用 AllOrigins 的 get 模式（包裝模式），這對於解決 413 Payload Too Large 錯誤最有效
+// 改用 allorigins.win 的 get 模式，這在處理較大的氣象 JSON 資料時寬容度最高，能有效解決 413 錯誤
 const proxyUrl = "https://api.allorigins.win/get?url=";
 
 function setup() {
@@ -71,28 +70,21 @@ function fetchRainData() {
 }
 
 function gotData(data) {
-  // 1. 處理 AllOrigins 的包裝結構
-  let actualData;
   try {
-    // AllOrigins 會把原始資料放在 contents 欄位（字串格式）
-    actualData = JSON.parse(data.contents);
-  } catch (e) {
-    console.error("JSON 解析失敗，原始內容為:", data.contents);
-    isLoading = false;
-    return;
-  }
+    // AllOrigins 會將原始 JSON 包裝在 contents 屬性中（字串格式），需手動 JSON.parse
+    const actualData = JSON.parse(data.contents);
 
-  // 2. 解析氣象署資料結構
-  if (actualData && actualData.records && actualData.records.Station) {
-    let allStations = actualData.records.Station;
-    // 精準過濾 CountyName 為 臺北市 的測站，同時確保有座標資料
-    // 2. 排除沒有座標資料的站點
-    rainData = allStations.filter(s => 
-      s.GeoInfo && 
-      (s.GeoInfo.CountyName === "臺北市" || s.GeoInfo.CountyName === "台北市")
-      // 不再強制檢查 Coordinates，因為我們有 stationCoords 對照表
-    );
-    lastUpdate = new Date().toLocaleTimeString();
+    // 2. 解析氣象署資料結構 (records.Station)
+    if (actualData && actualData.records && actualData.records.Station) {
+      rainData = actualData.records.Station;
+      
+      // 取得資料中的觀測時間
+      if (rainData.length > 0) {
+        lastUpdate = rainData[0].ObsTime.DateTime;
+      }
+    }
+  } catch (e) {
+    console.error("解析資料失敗，可能是目標伺服器回傳格式不正確:", e);
   }
   isLoading = false;
 }
@@ -137,8 +129,7 @@ function draw() {
   textSize(14);
   text("測站名稱", xPos, yPos);
   text("行政區", xPos + 120, yPos);
-  text("1hr (mm)", xPos + 200, yPos);
-  text("本日 (mm)", xPos + 280, yPos);
+  text("即時雨量(mm)", xPos + 200, yPos);
   
   stroke(100);
   line(20, yPos + 20, 350, yPos + 20);
@@ -153,15 +144,12 @@ function draw() {
     
     // 1. 在列表顯示資料 (僅顯示前 N 筆以免超出螢幕)
     let sName = station.StationName || "未知";
-    let aName = (station.GeoInfo && (station.GeoInfo.TownName || "-")) || "-";
+    let aName = (station.GeoInfo && station.GeoInfo.TownName) || "-";
     
-    // 安全取得雨量資料，避免因欄位缺失導致程式崩潰
+    // 氣象署 API 雨量欄位在 RainfallElement.Past1hr.Precipitation
     let rainNow = (station.RainfallElement && station.RainfallElement.Past1hr) ? float(station.RainfallElement.Past1hr.Precipitation) : 0;
-    let rainDay = (station.RainfallElement && station.RainfallElement.Now) ? float(station.RainfallElement.Now.Precipitation) : 0;
     
-    // CWA 的 -99 或 -999 代表無資料，轉為 0 方便顯示
     if (rainNow < 0) rainNow = 0;
-    if (rainDay < 0) rainDay = 0;
 
     if (i < displayLimit) {
       let currentY = yPos + 35 + (i * margin);
@@ -170,23 +158,25 @@ function draw() {
       text(aName, xPos + 120, currentY);
       if (rainNow > 0) fill(100, 255, 100); 
       text(rainNow.toFixed(1), xPos + 200, currentY);
-      fill(255);
-      text(rainDay.toFixed(1), xPos + 280, currentY);
     }
 
     // 2. 在地圖上繪製雨量點
     let lat = 0;
     let lon = 0;
 
-    // 優先從對照表抓取座標，確保顯示在台北市範圍內
-    if (stationCoords[sName]) {
+    // 從 API 的 GeoInfo.Coordinates 中提取經緯度 (優先找 WGS84)
+    if (station.GeoInfo && Array.isArray(station.GeoInfo.Coordinates)) {
+      let coords = station.GeoInfo.Coordinates.find(c => c.CoordinateName === "WGS84");
+      if (coords) {
+        lat = float(coords.StationLatitude);
+        lon = float(coords.StationLongitude);
+      }
+    }
+    
+    // 如果 API 沒給座標，才從手動對照表中補值
+    if (lat === 0 && stationCoords[sName]) {
       lat = stationCoords[sName].lat;
       lon = stationCoords[sName].lon;
-    } else if (station.GeoInfo && Array.isArray(station.GeoInfo.Coordinates)) {
-      // 如果對照表沒有，才從 API 資料尋找 WGS84 座標
-      let c = station.GeoInfo.Coordinates.find(coord => coord.CoordinateName === "WGS84" || coord.CoordinateScale === "WGS84");
-      lat = c ? float(c.StationLatitude) : 0;
-      lon = c ? float(c.StationLongitude) : 0;
     }
     
     if (lat !== 0 && lon !== 0) {
@@ -210,8 +200,8 @@ function draw() {
 
   // 3. 顯示懸停資訊視窗 (Tooltips)
   if (hoveredStation) {
-    let sName = hoveredStation.StationName;
-    let rNow = (hoveredStation.RainfallElement && hoveredStation.RainfallElement.Past1hr) ? hoveredStation.RainfallElement.Past1hr.Precipitation : 0;
+    let sName = hoveredStation.StationName || "未知";
+    let rNow = (hoveredStation.RainfallElement && hoveredStation.RainfallElement.Past1hr) ? float(hoveredStation.RainfallElement.Past1hr.Precipitation) : 0;
     if (rNow < 0) rNow = 0;
     fill(0, 0, 0, 200);
     rect(mouseX + 15, mouseY - 40, 140, 50, 5);
