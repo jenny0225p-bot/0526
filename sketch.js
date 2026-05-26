@@ -135,7 +135,11 @@ function draw() {
     
     if (lat && lon) {
       let pos = myMap.latLngToPixel(lat, lon);
-      let rNow = float(station.Rain1hr || station.rain1hr || 0);
+      
+      // 修正：從正確的 CWA JSON 路徑取得 1 小時雨量
+      let rNow = float(station.RainfallElement.Past1hr.Precipitation);
+      if (rNow < 0) rNow = 0; // 處理 -99 等異常值
+      
       let radius = 10 + rNow * 2;
       
       // 偵測滑鼠是否在圓點上
