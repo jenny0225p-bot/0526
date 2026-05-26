@@ -15,8 +15,8 @@ const options = {
   style: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 };
 
-// 原始 API 網址
-const targetUrl = "https://wic.gov.taipei/OpenData/API/Rain/Get?stationNo=&loginId=open_rain&dataKey=85452C1D";
+// 氣象署 CWA API 網址 (包含全台灣觀測站)
+const targetUrl = "https://opendata.cwa.gov.taipei/api/v1/rest/datastore/O-A0002-001?Authorization=rdec-key-123-45678-011121314";
 // 使用 corsproxy.io 公共代理伺服器來解決 CORS 問題
 const proxyUrl = "https://api.allorigins.win/raw?url=";
 
@@ -43,11 +43,11 @@ function fetchRainData() {
 
 function gotData(data) {
   console.log("收到原始資料:", data);
-  // 檢查資料結構：相容直接回傳陣列或包含在 Data 屬性中的情況
-  let actualData = Array.isArray(data) ? data : (data.Data || data.data || []);
-  
-  if (Array.isArray(actualData) && actualData.length > 0) {
-    rainData = actualData;
+  // 解析氣象署 JSON 結構並過濾臺北市資料
+  if (data && data.records && data.records.Station) {
+    let allStations = data.records.Station;
+    // 過濾 CountyName 為 臺北市 的測站
+    rainData = allStations.filter(s => s.GeoInfo && s.GeoInfo.CountyName === "臺北市");
     lastUpdate = new Date().toLocaleTimeString();
   }
   isLoading = false;
@@ -88,13 +88,13 @@ function draw() {
   let xPos = 20;
   let hoveredStation = null;
 
-  // 繪製表頭
+  // 繪製表頭 (針對 CWA 欄位調整)
   fill(100, 200, 255);
   textSize(14);
   text("測站名稱", xPos, yPos);
-  text("行政區", xPos + 110, yPos);
-  text("現在 (mm)", xPos + 200, yPos);
-  text("累積 (mm)", xPos + 280, yPos);
+  text("行政區", xPos + 120, yPos);
+  text("1hr (mm)", xPos + 200, yPos);
+  text("本日 (mm)", xPos + 280, yPos);
   
   stroke(100);
   line(20, yPos + 20, 350, yPos + 20);
@@ -108,26 +108,30 @@ function draw() {
     let station = rainData[i];
     
     // 1. 在列表顯示資料 (僅顯示前 N 筆以免超出螢幕)
+    let sName = station.StationName || "未知";
+    let aName = (station.GeoInfo && station.GeoInfo.TownName) || "-";
+    let rainNow = float(station.RainfallElement.Past1hr.Precipitation);
+    let rainDay = float(station.RainfallElement.Now.Precipitation);
+    
+    // CWA 的 -99 或 -999 代表無資料，轉為 0 方便顯示
+    if (rainNow < 0) rainNow = 0;
+    if (rainDay < 0) rainDay = 0;
+
     if (i < displayLimit) {
       let currentY = yPos + 35 + (i * margin);
-      let sName = station.StationName || station.stationName || "未知";
-      let aName = station.AreaName || station.areaName || "-";
       fill(255);
       text(sName, xPos, currentY);
-      text(aName, xPos + 110, currentY);
-      
-      let rainNow = float(station.Rain1hr || station.rain1hr || 0);
+      text(aName, xPos + 120, currentY);
       if (rainNow > 0) fill(100, 255, 100); 
       text(rainNow.toFixed(1), xPos + 200, currentY);
-      
       fill(255);
-      let rainDay = float(station.Rain24hr || station.rain24hr || 0);
       text(rainDay.toFixed(1), xPos + 280, currentY);
     }
 
-    // 2. 在地圖上繪製雨量點
-    let lat = float(station.Lat || station.lat);
-    let lon = float(station.Lon || station.lon || station.Lng || station.lng);
+    // 2. 在地圖上繪製雨量點 (需尋找 WGS84 座標)
+    let coords = station.GeoInfo.Coordinates.find(c => c.CoordinateName === "WGS84");
+    let lat = coords ? float(coords.StationLatitude) : null;
+    let lon = coords ? float(coords.StationLongitude) : null;
     
     if (lat && lon) {
       let pos = myMap.latLngToPixel(lat, lon);
@@ -150,8 +154,9 @@ function draw() {
 
   // 3. 顯示懸停資訊視窗 (Tooltips)
   if (hoveredStation) {
-    let sName = hoveredStation.StationName || hoveredStation.stationName;
-    let rNow = hoveredStation.Rain1hr || hoveredStation.rain1hr;
+    let sName = hoveredStation.StationName;
+    let rNow = hoveredStation.RainfallElement.Past1hr.Precipitation;
+    if (rNow < 0) rNow = 0;
     fill(0, 0, 0, 200);
     rect(mouseX + 15, mouseY - 40, 140, 50, 5);
     fill(255);
