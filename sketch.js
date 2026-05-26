@@ -5,7 +5,7 @@ let isLoading = true;
 // 原始 API 網址
 const targetUrl = "https://wic.gov.taipei/OpenData/API/Rain/Get?stationNo=&loginId=open_rain&dataKey=85452C1D";
 // 使用 corsproxy.io 公共代理伺服器來解決 CORS 問題
-const proxyUrl = "https://corsproxy.io/?";
+const proxyUrl = "https://api.allorigins.win/raw?url=";
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -25,9 +25,12 @@ function fetchRainData() {
 }
 
 function gotData(data) {
-  // 台北市雨量 API 回傳通常是一個陣列
-  if (data && Array.isArray(data)) {
-    rainData = data;
+  console.log("收到原始資料:", data);
+  // 檢查資料結構：相容直接回傳陣列或包含在 Data 屬性中的情況
+  let actualData = Array.isArray(data) ? data : (data.Data || data.data || []);
+  
+  if (Array.isArray(actualData) && actualData.length > 0) {
+    rainData = actualData;
     lastUpdate = new Date().toLocaleTimeString();
   }
   isLoading = false;
@@ -81,16 +84,19 @@ function draw() {
     let currentY = yPos + 35 + (i * margin);
     
     // 測站名稱與區域
-    text(station.stationName || "未知", xPos, currentY);
-    text(station.areaName || "-", xPos + 150, currentY);
+    // 相容 WIC API 可能使用的大寫開頭欄位
+    let sName = station.StationName || station.stationName || "未知";
+    let aName = station.AreaName || station.areaName || "-";
+    text(sName, xPos, currentY);
+    text(aName, xPos + 150, currentY);
     
     // 雨量數據 (根據數值改變顏色，提醒注意)
-    let rainNow = float(station.rain1hr || 0);
+    let rainNow = float(station.Rain1hr || station.rain1hr || 0);
     if (rainNow > 0) fill(100, 255, 100); 
     text(rainNow.toFixed(1), xPos + 250, currentY);
     
     fill(255);
-    let rainDay = float(station.rain24hr || 0);
+    let rainDay = float(station.Rain24hr || station.rain24hr || 0);
     text(rainDay.toFixed(1), xPos + 380, currentY);
   }
   
